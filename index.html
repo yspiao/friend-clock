@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Friend Clock</title>
+
+  <!-- 可选：更像“DOS/终端”的等宽字体（无网会回退到系统 Courier） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      /* 纯色：黑 + 灰 + 深蓝（无渐变） */
+      --bg: #000000;
+      --panel: #001a4d;     /* deep blue */
+      --panel2:#0a0a0a;     /* near-black */
+      --border:#8a8a8a;     /* grey */
+      --border2:#5c5c5c;    /* darker grey */
+      --text: #d8d8d8;
+      --muted:#a8a8a8;
+      --hi:   #ffffff;
+
+      /* 数码管颜色（纯色、克制） */
+      --seg-on:  #b9d0ff;   /* pale blue */
+      --seg-off: #1b1f2a;   /* very dark blue-grey */
+      --seg-bg:  #000000;
+
+      --font: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --r: 0px; /* DOS 感：直角 */
+    }
+
+    *{ box-sizing:border-box; }
+    html, body{ height:100%; }
+    body{
+      margin:0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      letter-spacing: .2px;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+
+    .screen{
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 18px 14px 26px;
+    }
+
+    /* 顶部 DOS 标题栏 */
+    .titlebar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding: 10px 12px;
+      background: var(--panel);
+      border: 2px solid var(--border);
+      border-bottom-color: var(--border2);
+      border-right-color: var(--border2);
+    }
+
+    .titlebar .name{
+      font-weight: 500;
+      color: var(--hi);
+      letter-spacing: .4px;
+    }
+    .titlebar .keys{
+      color: var(--text);
+      font-size: 12px;
+      opacity:.95;
+      white-space:nowrap;
+    }
+
+    /* 主窗口 */
+    .window{
+      margin-top: 10px;
+      border: 2px solid var(--border);
+      border-top-color: var(--border2);
+      border-left-color: var(--border2);
+      background: var(--panel2);
+    }
+
+    .toolbar{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      padding: 12px;
+      border-bottom: 1px solid var(--border2);
+      background: var(--panel2);
+    }
+
+    .label{
+      font-size: 12px;
+      color: var(--muted);
+      white-space:nowrap;
+    }
+
+    .field{
+      position:relative;
+      flex: 1 1 420px;
+      min-width: 260px;
+    }
+
+    input[type="text"]{
+      width:100%;
+      padding: 10px 10px;
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--border2);
+      outline:none;
+      border-radius: var(--r);
+      font-family: var(--font);
+      font-size: 13px;
+    }
+    input[type="text"]:focus{
+      border-color: var(--border);
+    }
+    input[type="text"]::placeholder{
+      color: #7f7f7f;
+    }
+
+    .btn{
+      padding: 10px 10px;
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--border2);
+      border-radius: var(--r);
+      font-family: var(--font);
+      font-size: 13px;
+      cursor:pointer;
+      white-space:nowrap;
+      user-select:none;
+    }
+    .btn:hover{
+      border-color: var(--border);
+      color: var(--hi);
+    }
+    .btn:active{
+      transform: translateY(1px);
+    }
+
+    .hintline{
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border2);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* 搜索结果：DOS 选择高亮（反显） */
+    .results{
+      position:absolute;
+      top: 46px;
+      left:0;
+      right:0;
+      background: var(--bg);
+      border: 2px solid var(--border2);
+      display:none;
+      z-index: 20;
+      max-height: 240px;
+      overflow:auto;
+    }
+    .results.show{ display:block; }
+
+    .result{
+      padding: 8px 10px;
+      border-bottom: 1px solid #222;
+      cursor:pointer;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:baseline;
+      font-size: 13px;
+    }
+    .result:last-child{ border-bottom:none; }
+    .result:hover{
+      background: var(--panel);
+      color: var(--hi);
+    }
+    .result .tz{
+      color: var(--muted);
+      white-space:nowrap;
+      margin-left: 10px;
+    }
+    .result:hover .tz{
+      color: var(--hi);
+    }
+
+    .toast{
+      display:none;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border2);
+      color: var(--hi);
+      background: var(--panel);
+      font-size: 12px;
+    }
+    .toast.show{ display:block; }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    /* 时钟卡片：DOS box */
+    .card{
+      border: 2px solid var(--border2);
+      background: var(--bg);
+    }
+
+    .cardhead{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:10px;
+      padding: 10px 10px 8px;
+      background: var(--panel);
+      border-bottom: 2px solid var(--border2);
+    }
+
+    .city{
+      color: var(--hi);
+      font-weight: 500;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .meta{
+      margin-top: 6px;
+      color: var(--text);
+      opacity:.9;
+      font-size: 12px;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+
+    .remove{
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--border2);
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 6px 8px;
+      cursor:pointer;
+      border-radius: var(--r);
+    }
+    .remove:hover{
+      border-color: var(--border);
+      color: var(--hi);
+    }
+
+    .cardbody{
+      padding: 10px;
+    }
+
+    .date{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .statusbar{
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border2);
+      color: var(--muted);
+      font-size: 12px;
+      display:flex;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+
+    /* =========================
+       7 段数码管（digital clock）
+       不依赖字体，纯 CSS 画段，保证“数码表”观感
+       ========================= */
+    .seven{
+      display:flex;
+      align-items:center;
+      gap: 6px;
+      background: var(--seg-bg);
+      padding: 8px 8px;
+      border: 2px solid var(--border2);
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .digit{
+      --w: 26px;
+      --h: 46px;
+      --t: 6px;      /* 段厚度 */
+      --m: 4px;      /* 内边距 */
+      width: var(--w);
+      height: var(--h);
+      position:relative;
+      flex: 0 0 auto;
+    }
+
+    .seg{
+      position:absolute;
+      background: var(--seg-off);
+    }
+
+    /* 水平段：a(上) g(中) d(下) */
+    .seg.a, .seg.g, .seg.d{
+      height: var(--t);
+      left: var(--m);
+      right: var(--m);
+    }
+    .seg.a{ top: 0; }
+    .seg.g{ top: calc(50% - (var(--t)/2)); }
+    .seg.d{ bottom: 0; }
+
+    /* 垂直段：f(左上) b(右上) e(左下) c(右下) */
+    .seg.f, .seg.b, .seg.e, .seg.c{
+      width: var(--t);
+      top: var(--m);
+      bottom: var(--m);
+    }
+    .seg.f{ left: 0; clip-path: inset(0 0 50% 0); }
+    .seg.b{ right: 0; clip-path: inset(0 0 50% 0); }
+    .seg.e{ left: 0; clip-path: inset(50% 0 0 0); }
+    .seg.c{ right: 0; clip-path: inset(50% 0 0 0); }
+
+    /* 冒号 */
+    .colon{
+      width: 10px;
+      height: 46px;
+      position:relative;
+      flex: 0 0 auto;
+    }
+    .colon::before, .colon::after{
+      content:"";
+      position:absolute;
+      width: 6px;
+      height: 6px;
+      left: 2px;
+      background: var(--seg-on);
+    }
+    .colon::before{ top: 14px; }
+    .colon::after{ bottom: 14px; }
+
+    /* 段点亮规则：通过 digit[data-value="X"] 选择器点亮对应段 */
+    .digit[data-value="0"] .a,
+    .digit[data-value="0"] .b,
+    .digit[data-value="0"] .c,
+    .digit[data-value="0"] .d,
+    .digit[data-value="0"] .e,
+    .digit[data-value="0"] .f{ background: var(--seg-on); }
+
+    .digit[data-value="1"] .b,
+    .digit[data-value="1"] .c{ background: var(--seg-on); }
+
+    .digit[data-value="2"] .a,
+    .digit[data-value="2"] .b,
+    .digit[data-value="2"] .g,
+    .digit[data-value="2"] .e,
+    .digit[data-value="2"] .d{ background: var(--seg-on); }
+
+    .digit[data-value="3"] .a,
+    .digit[data-value="3"] .b,
+    .digit[data-value="3"] .c,
+    .digit[data-value="3"] .d,
+    .digit[data-value="3"] .g{ background: var(--seg-on); }
+
+    .digit[data-value="4"] .f,
+    .digit[data-value="4"] .g,
+    .digit[data-value="4"] .b,
+    .digit[data-value="4"] .c{ background: var(--seg-on); }
+
+    .digit[data-value="5"] .a,
+    .digit[data-value="5"] .f,
+    .digit[data-value="5"] .g,
+    .digit[data-value="5"] .c,
+    .digit[data-value="5"] .d{ background: var(--seg-on); }
+
+    .digit[data-value="6"] .a,
+    .digit[data-value="6"] .f,
+    .digit[data-value="6"] .e,
+    .digit[data-value="6"] .d,
+    .digit[data-value="6"] .c,
+    .digit[data-value="6"] .g{ background: var(--seg-on); }
+
+    .digit[data-value="7"] .a,
+    .digit[data-value="7"] .b,
+    .digit[data-value="7"] .c{ background: var(--seg-on); }
+
+    .digit[data-value="8"] .a,
+    .digit[data-value="8"] .b,
+    .digit[data-value="8"] .c,
+    .digit[data-value="8"] .d,
+    .digit[data-value="8"] .e,
+    .digit[data-value="8"] .f,
+    .digit[data-value="8"] .g{ background: var(--seg-on); }
+
+    .digit[data-value="9"] .a,
+    .digit[data-value="9"] .b,
+    .digit[data-value="9"] .c,
+    .digit[data-value="9"] .d,
+    .digit[data-value="9"] .f,
+    .digit[data-value="9"] .g{ background: var(--seg-on); }
+
+    /* 小屏适配：缩小段显示 */
+    @media (max-width: 520px){
+      .digit{ --w: 22px; --h: 40px; --t: 5px; --m: 4px; }
+      .colon{ height: 40px; }
+      .colon::before{ top: 12px; }
+      .colon::after{ bottom: 12px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="screen">
+    <div class="titlebar">
+      <div class="name">Friend Clock</div>
+      <div class="keys">F1 Help&nbsp;&nbsp;|&nbsp;&nbsp;F2 Add by TZ&nbsp;&nbsp;|&nbsp;&nbsp;ESC Close</div>
+    </div>
+
+    <div class="window">
+      <div class="toolbar">
+        <div class="label">CITY SEARCH:</div>
+        <div class="field">
+          <input id="search" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Type a city name in English (e.g., Berlin, Seoul, Los Angeles)">
+          <div id="results" class="results" role="listbox" aria-label="Search results"></div>
+        </div>
+        <button id="addManual" class="btn" type="button">[ ADD BY TIME ZONE ]</button>
+      </div>
+
+      <div class="hintline">
+        Use arrow keys to select a result, Enter to add. All UI text is English.
+      </div>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <section id="grid" class="grid" aria-label="Clocks grid"></section>
+
+      <div class="statusbar">
+        <div id="localMeta"></div>
+        <div>Data: Open-Meteo Geocoding (no API key)</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================
+       Friend Clock — DOS UI + 7-seg Digital Clock
+       中文注释用于 debug；页面文案全部英文
+       1) 城市搜索：Open-Meteo geocoding -> timezone
+       2) 时间显示：Intl.DateTimeFormat + timeZone
+       3) 持久化：localStorage
+       ========================= */
+
+    const STORAGE_KEY = "friend_clock_v1";
+
+    const DEFAULT_CLOCKS = [
+      { id: uid(), label: "Seoul", tz: "Asia/Seoul" },
+      { id: uid(), label: "Berlin", tz: "Europe/Berlin" },
+      { id: uid(), label: "Bristol", tz: "Europe/London" },
+      { id: uid(), label: "Los Angeles", tz: "America/Los_Angeles" },
+      { id: uid(), label: "Denver", tz: "America/Denver" },
+      { id: uid(), label: "Austin", tz: "America/Chicago" },
+    ];
+
+    const grid = document.getElementById("grid");
+    const search = document.getElementById("search");
+    const resultsBox = document.getElementById("results");
+    const toast = document.getElementById("toast");
+    const localMeta = document.getElementById("localMeta");
+    const addManualBtn = document.getElementById("addManual");
+
+    let clocks = loadClocks();
+    let cachedZoneMeta = new Map(); // tz -> {abbr, offset}
+    let activeResults = [];
+    let activeIndex = -1;
+    let searchTimer = null;
+
+    init();
+
+    function init(){
+      render();
+      startTick();
+
+      // 显示本地时区（英文）
+      try{
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+        localMeta.textContent = `LOCAL TZ: ${tz}`;
+      }catch{
+        localMeta.textContent = "LOCAL TZ: Unknown";
+      }
+
+      // 输入搜索（防抖）
+      search.addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => runSearch(search.value.trim()), 240);
+      });
+
+      // 键盘操作：上下选择 + 回车添加
+      search.addEventListener("keydown", (e) => {
+        if (!resultsBox.classList.contains("show")) {
+          // 额外：F2 快捷键
+          if (e.key === "F2") {
+            e.preventDefault();
+            addManualBtn.click();
+          }
+          return;
+        }
+
+        if (e.key === "ArrowDown"){
+          e.preventDefault();
+          activeIndex = Math.min(activeIndex + 1, activeResults.length - 1);
+          highlightActive();
+        } else if (e.key === "ArrowUp"){
+          e.preventDefault();
+          activeIndex = Math.max(activeIndex - 1, 0);
+          highlightActive();
+        } else if (e.key === "Enter"){
+          e.preventDefault();
+          if (activeResults[activeIndex]) addFromResult(activeResults[activeIndex]);
+        } else if (e.key === "Escape"){
+          closeResults();
+        }
+      });
+
+      // 全局快捷键：F2 添加时区，ESC 关闭搜索结果
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "F2") {
+          e.preventDefault();
+          addManualBtn.click();
+        }
+        if (e.key === "Escape") closeResults();
+      });
+
+      // 点击空白区域关闭结果
+      document.addEventListener("click", (e) => {
+        if (!resultsBox.contains(e.target) && e.target !== search){
+          closeResults();
+        }
+      });
+
+      // 手动按 time zone 添加（已知 tz 名称时更快）
+      addManualBtn.addEventListener("click", () => {
+        const tz = prompt("Enter an IANA time zone (e.g., Europe/Berlin):");
+        if (!tz) return;
+        const label = prompt("Label for this clock (e.g., Berlin):") || tz;
+        tryAddClock({ label: label.trim(), tz: tz.trim() });
+      });
+    }
+
+    function render(){
+      grid.innerHTML = "";
+
+      if (!clocks.length){
+        const empty = document.createElement("div");
+        empty.className = "card";
+        empty.innerHTML = `
+          <div class="cardhead">
+            <div>
+              <div class="city">NO CLOCKS</div>
+              <div class="meta">Search a city above to add one.</div>
+            </div>
+          </div>
+          <div class="cardbody">
+            ${sevenMarkup("------")} 
+            <div class="date">---</div>
+          </div>
+        `;
+        grid.appendChild(empty);
+        return;
+      }
+
+      for (const c of clocks){
+        const card = document.createElement("article");
+        card.className = "card";
+        card.dataset.id = c.id;
+
+        const meta = getZoneMeta(c.tz);
+        const metaText = meta.offset
+          ? `${c.tz} | ${meta.abbr} | ${meta.offset}`
+          : `${c.tz} | ${meta.abbr}`;
+
+        // 数码管：固定 6 位（HHMMSS），冒号由 DOM 插入
+        card.innerHTML = `
+          <div class="cardhead">
+            <div>
+              <div class="city">${escapeHtml(c.label)}</div>
+              <div class="meta">${escapeHtml(metaText)}</div>
+            </div>
+            <button class="remove" type="button" aria-label="Remove clock">[X]</button>
+          </div>
+
+          <div class="cardbody">
+            <div class="seven" data-role="seven" aria-label="time digits">
+              ${digitBlock()}${digitBlock()}<div class="colon" aria-hidden="true"></div>
+              ${digitBlock()}${digitBlock()}<div class="colon" aria-hidden="true"></div>
+              ${digitBlock()}${digitBlock()}
+            </div>
+
+            <div class="date">
+              <div data-role="weekday">---</div>
+              <div data-role="date">---</div>
+            </div>
+          </div>
+        `;
+
+        card.querySelector(".remove").addEventListener("click", () => {
+          clocks = clocks.filter(x => x.id !== c.id);
+          saveClocks(clocks);
+          render();
+        });
+
+        grid.appendChild(card);
+      }
+
+      updateTimes();
+    }
+
+    function digitBlock(){
+      // 7 段数字：每个 digit 7 个段
+      return `
+        <div class="digit" data-value="0" aria-hidden="true">
+          <span class="seg a"></span>
+          <span class="seg b"></span>
+          <span class="seg c"></span>
+          <span class="seg d"></span>
+          <span class="seg e"></span>
+          <span class="seg f"></span>
+          <span class="seg g"></span>
+        </div>
+      `;
+    }
+
+    function startTick(){
+      // 对齐整秒，避免秒数抖动
+      const now = Date.now();
+      const delay = 1000 - (now % 1000);
+      setTimeout(function tick(){
+        updateTimes();
+        setTimeout(tick, 1000);
+      }, delay);
+    }
+
+    function updateTimes(){
+      const now = new Date();
+      const cards = grid.querySelectorAll(".card");
+
+      cards.forEach(card => {
+        const id = card.dataset.id;
+        const c = clocks.find(x => x.id === id);
+        if (!c) return;
+
+        const parts = formatTimeParts(now, c.tz); // {hh,mm,ss}
+        const six = `${parts.hh}${parts.mm}${parts.ss}`; // 6 digits
+        const digits = card.querySelectorAll('.digit');
+
+        // 这里 digits 顺序就是：HHMMSS（冒号是单独的 div）
+        for (let i = 0; i < digits.length; i++){
+          const val = six[i] ?? "0";
+          digits[i].setAttribute("data-value", val);
+        }
+
+        const d = formatDate(now, c.tz);
+        card.querySelector('[data-role="weekday"]').textContent = d.weekday;
+        card.querySelector('[data-role="date"]').textContent = d.date;
+      });
+    }
+
+    function formatTimeParts(date, tz){
+      const fmt = new Intl.DateTimeFormat("en-GB", {
+        timeZone: tz,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+      const str = fmt.format(date); // "23:15:09"
+      const [hh, mm, ss] = str.split(":");
+      return { hh, mm, ss };
+    }
+
+    function formatDate(date, tz){
+      const weekday = new Intl.DateTimeFormat("en-GB", {
+        timeZone: tz,
+        weekday: "short"
+      }).format(date);
+
+      const full = new Intl.DateTimeFormat("en-GB", {
+        timeZone: tz,
+        year: "numeric",
+        month: "short",
+        day: "2-digit"
+      }).format(date);
+
+      return { weekday, date: full };
+    }
+
+    function getZoneMeta(tz){
+      if (cachedZoneMeta.has(tz)) return cachedZoneMeta.get(tz);
+
+      let abbr = tz;
+      let offset = "";
+
+      try{
+        const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" });
+        const parts = dtf.formatToParts(new Date());
+        abbr = parts.find(p => p.type === "timeZoneName")?.value || tz;
+      }catch{
+        abbr = tz;
+      }
+
+      try{
+        const dtf2 = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" });
+        const parts2 = dtf2.formatToParts(new Date());
+        offset = parts2.find(p => p.type === "timeZoneName")?.value || "";
+      }catch{
+        offset = "";
+      }
+
+      const meta = { abbr, offset };
+      cachedZoneMeta.set(tz, meta);
+      return meta;
+    }
+
+    async function runSearch(q){
+      if (!q){
+        closeResults();
+        return;
+      }
+
+      // 任意城市：Open-Meteo Geocoding，不需要 key
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`;
+
+      resultsBox.innerHTML = "";
+      resultsBox.classList.remove("show");
+      activeResults = [];
+      activeIndex = -1;
+
+      try{
+        const res = await fetch(url, { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const results = (data && data.results) ? data.results : [];
+        if (!results.length){
+          showToast("NO MATCHES. TRY A MORE SPECIFIC CITY NAME.");
+          closeResults();
+          return;
+        }
+
+        activeResults = results.map(r => ({
+          label: buildLabel(r),
+          tz: r.timezone,
+        })).filter(x => x.tz);
+
+        if (!activeResults.length){
+          showToast("NO TIME ZONE FOUND FOR THAT QUERY.");
+          closeResults();
+          return;
+        }
+
+        resultsBox.innerHTML = "";
+        activeResults.forEach((item, idx) => {
+          const row = document.createElement("div");
+          row.className = "result";
+          row.setAttribute("role", "option");
+          row.dataset.index = String(idx);
+          row.innerHTML = `
+            <div class="place">${escapeHtml(item.label)}</div>
+            <div class="tz">${escapeHtml(item.tz)}</div>
+          `;
+          row.addEventListener("click", () => addFromResult(item));
+          resultsBox.appendChild(row);
+        });
+
+        resultsBox.classList.add("show");
+        activeIndex = 0;
+        highlightActive();
+      }catch(err){
+        // 无网/被拦：给明确提示
+        showToast("SEARCH FAILED (NETWORK BLOCKED?). USE [ ADD BY TIME ZONE ].");
+        closeResults();
+      }
+    }
+
+    function buildLabel(r){
+      // 组一个更清晰的英文标签
+      const parts = [];
+      if (r.name) parts.push(r.name);
+      if (r.admin1 && r.admin1 !== r.name) parts.push(r.admin1);
+      if (r.country_code) parts.push(r.country_code);
+      else if (r.country) parts.push(r.country);
+      return parts.join(", ");
+    }
+
+    function addFromResult(item){
+      tryAddClock({ label: item.label, tz: item.tz });
+      search.value = "";
+      closeResults();
+    }
+
+    function tryAddClock(clock){
+      // 去重：同一 tz + label 不重复
+      const exists = clocks.some(c => (c.tz === clock.tz && c.label.toLowerCase() === clock.label.toLowerCase()));
+      if (exists){
+        showToast("ALREADY IN LIST.");
+        return;
+      }
+
+      // 校验 tz：无效会抛 RangeError
+      try{
+        new Intl.DateTimeFormat("en-US", { timeZone: clock.tz }).format(new Date());
+      }catch{
+        showToast("INVALID TIME ZONE. USE A VALID IANA TIME ZONE.");
+        return;
+      }
+
+      clocks.unshift({ id: uid(), label: clock.label, tz: clock.tz });
+      saveClocks(clocks);
+      render();
+      showToast(`ADDED: ${clock.label.toUpperCase()}`);
+    }
+
+    function highlightActive(){
+      const items = resultsBox.querySelectorAll(".result");
+      items.forEach(el => el.style.background = "");
+      const active = resultsBox.querySelector(`.result[data-index="${activeIndex}"]`);
+      if (active){
+        active.style.background = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();
+        active.style.color = getComputedStyle(document.documentElement).getPropertyValue('--hi').trim();
+        active.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function closeResults(){
+      resultsBox.classList.remove("show");
+      resultsBox.innerHTML = "";
+      activeResults = [];
+      activeIndex = -1;
+    }
+
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove("show"), 2200);
+    }
+
+    function loadClocks(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [...DEFAULT_CLOCKS];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || !parsed.length) return [...DEFAULT_CLOCKS];
+
+        const cleaned = parsed
+          .filter(x => x && typeof x.label === "string" && typeof x.tz === "string")
+          .map(x => ({ id: x.id || uid(), label: x.label, tz: x.tz }));
+
+        return cleaned.length ? cleaned : [...DEFAULT_CLOCKS];
+      }catch{
+        return [...DEFAULT_CLOCKS];
+      }
+    }
+
+    function saveClocks(list){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      }catch{
+        // localStorage 被禁用时不致命
+      }
+    }
+
+    function uid(){
+      return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16);
+    }
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;",
+        "<":"&lt;",
+        ">":"&gt;",
+        '"':"&quot;",
+        "'":"&#39;"
+      }[c]));
+    }
+  </script>
+</body>
+</html>
